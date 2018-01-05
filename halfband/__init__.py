@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 05.01.2018 14:05
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 05.01.2018 14:30
 import os
 import sys
 import numpy as np
@@ -20,7 +20,7 @@ from rtl import *
 class halfband(rtl,thesdk):
     def __init__(self,*arg): 
         self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
-        self.Rs = 1;                 # sampling frequency
+        self.Rs = 160;                 # sampling frequency
         self.halfband_Bandwidth=0.45 # Pass band bandwidth
         self.halfband_N=40           #Number of coeffs
         self.iptr_A = refptr();
@@ -43,7 +43,7 @@ class halfband(rtl,thesdk):
 
     def get_rtlcmd(self):
         #the could be gathered to rtl class in some way but they are now here for clarity
-        submission = ' bsub -q normal '  
+        submission = ' bsub -K '  
         rtllibcmd =  'vlib ' +  self._workpath + ' && sleep 2'
         rtllibmapcmd = 'vmap work ' + self._workpath
 
@@ -69,13 +69,46 @@ class halfband(rtl,thesdk):
 
     def run(self,*arg):
         if len(arg)>0:
-            par=True      #flag for parallel processing
+            self.par=True      #flag for parallel processing
             queue=arg[0]  #multiprocessing.Queue as the first argument
         else:
-            par=False
+            self.par=False
 
         if self.model=='py':
-            print(self.iptr_A.Value.shape)
+            self.decimate_input()
+        else: 
+          try:
+              os.remove(self._infile)
+          except:
+              pass
+          fid=open(self._infile,'wb')
+          np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
+          fid.close()
+          while not os.path.isfile(self._infile):
+              self.print_log({'type':'I', 'msg':"Wait infile to appear"})
+              time.sleep(5)
+          try:
+              os.remove(self._outfile)
+          except:
+              pass
+          self.print_log({'type':'I', 'msg':"Running external command %s\n" %(self._rtlcmd) })
+          subprocess.call(shlex.split(self._rtlcmd));
+          
+          while not os.path.isfile(self._outfile):
+              self.print_log({'type':'I', 'msg':"Wait outfile to appear"})
+              time.sleep(5)
+          fid=open(self._outfile,'r')
+          out = np.loadtxt(fid,dtype=complex)
+          #Of course it does not work symmetrically with savetxt
+          out=(out[:,0]+1j*out[:,1]).reshape(-1,1) 
+          fid.close()
+          if self.par:
+              queue.put(out)
+          self._Z.Value=out
+          os.remove(self._infile)
+          os.remove(self._outfile)
+
+    def decimate_input(self):
             if self.iptr_A.Value.shape[1] > self.iptr_A.Value.shape[0]:
                 out=np.convolve(np.transpose(self.iptr_A.Value)[:,0],self.H[:,0]).rehape(-1,1)
             else:
@@ -83,41 +116,9 @@ class halfband(rtl,thesdk):
                 out=np.convolve(self.iptr_A.Value[:,0],self.H[:,0]).reshape(-1,1)
 
             out=out[0::2,0]
-            if par:
+            if self.par:
                 queue.put(out)
             self._Z.Value=out
-        else: 
-          try:
-              os.remove(self._infile)
-          except:
-              pass
-          fid=open(self._infile,'wb')
-          np.savetxt(fid,self.iptr_A.Value,fmt='%.0f')
-          #np.savetxt(fid,np.transpose(inp),fmt='%.0f')
-          fid.close()
-          while not os.path.isfile(self._infile):
-              #print("Wait infile to appear")
-              time.sleep(1)
-          try:
-              os.remove(self._outfile)
-          except:
-              pass
-          print("Running external command \n", self._rtlcmd , "\n" )
-          subprocess.call(shlex.split(self._rtlcmd));
-          
-          while not os.path.isfile(self._outfile):
-              #print("Wait outfile to appear")
-              time.sleep(1)
-          fid=open(self._outfile,'r')
-          #fid=open(self._infile,'r')
-          #out = .np.loadtxt(fid)
-          out = np.transpose(np.loadtxt(fid))
-          fid.close()
-          if par:
-              queue.put(out)
-          self._Z.Value=out
-          os.remove(self._infile)
-          os.remove(self._outfile)
 
     def firhalfband(self,**kwargs):
        n=kwargs.get('n',32)
@@ -155,7 +156,7 @@ if __name__=="__main__":
     from  f2_signal_gen import *
     from  f2_system import *
     siggen=f2_signal_gen()
-    siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':[11.0e6 , 0.45*80e6, 0.55*80e6 ], 'length':2**14, 'BBRs':160e6 };
+    siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':[11.0e6 , 0.45*80e6, 0.95*80e6, 1.05*80e6 ], 'length':2**14, 'BBRs':160e6 };
     siggen.Users=1
     siggen.Txantennas=1
     siggen.init()
