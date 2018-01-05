@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 05.01.2018 14:30
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 05.01.2018 15:17
 import os
 import sys
 import numpy as np
@@ -75,6 +75,9 @@ class halfband(rtl,thesdk):
             self.par=False
 
         if self.model=='py':
+            fid=open(self._infile,'wb')
+            np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
+            fid.close()
             self.decimate_input()
         else: 
           try:
@@ -160,9 +163,13 @@ if __name__=="__main__":
     siggen.Users=1
     siggen.Txantennas=1
     siggen.init()
-
+    #Mimic ADC
+    bits=10
+    insig=siggen._Z.Value[0,:,0].reshape(-1,1)
+    insig=np.round(insig/np.amax(np.abs(insig))*(2**(bits-1)-1))
+    print(insig)
     h=halfband()
-    h.iptr_A.Value=siggen._Z.Value[0,:,0].reshape(-1,1)
+    h.iptr_A.Value=insig
     h.halfband_Bandwidth=0.45
     h.halfband_N=40
     h.init()
