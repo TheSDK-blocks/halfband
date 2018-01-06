@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 05.01.2018 15:17
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 05.01.2018 18:16
 import os
 import sys
 import numpy as np
@@ -75,9 +75,6 @@ class halfband(rtl,thesdk):
             self.par=False
 
         if self.model=='py':
-            fid=open(self._infile,'wb')
-            np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
-            fid.close()
             self.decimate_input()
         else: 
           try:
@@ -115,7 +112,6 @@ class halfband(rtl,thesdk):
             if self.iptr_A.Value.shape[1] > self.iptr_A.Value.shape[0]:
                 out=np.convolve(np.transpose(self.iptr_A.Value)[:,0],self.H[:,0]).rehape(-1,1)
             else:
-                print(self.H.shape)
                 out=np.convolve(self.iptr_A.Value[:,0],self.H[:,0]).reshape(-1,1)
 
             out=out[0::2,0]
@@ -139,10 +135,11 @@ class halfband(rtl,thesdk):
     def export_scala(self):
        #This is the first effort to support generators
        bwstr=str(self.halfband_Bandwidth).replace('.','')
-       print(bwstr)
        packagestr="halfband_BW_"+bwstr+"_N_"+str(self.halfband_N)
        tapfile=os.path.dirname(os.path.realpath(__file__)) +"/"+packagestr+".scala"
        fid=open(tapfile,'w')
+       msg="package "+ packagestr+"\n\n"
+       fid.write(msg)
        msg="object "+ packagestr+" {\n"
        fid.write(msg)
        msg="val H=Seq("
@@ -167,11 +164,11 @@ if __name__=="__main__":
     bits=10
     insig=siggen._Z.Value[0,:,0].reshape(-1,1)
     insig=np.round(insig/np.amax(np.abs(insig))*(2**(bits-1)-1))
-    print(insig)
     h=halfband()
     h.iptr_A.Value=insig
     h.halfband_Bandwidth=0.45
     h.halfband_N=40
+    h.model='sv'
     h.init()
     impulse=np.r_['0', h.H, np.zeros((1024-h.H.shape[0],1))]
     h.export_scala() 
@@ -194,6 +191,7 @@ if __name__=="__main__":
     g.show()
     
     #spe3=np.fft.fft(h._Z.Value,axis=0)
+    print(h._Z.Value)
     fs, spe3=sig.welch(h._Z.Value,fs=80e6,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
     w=np.arange(spe3.shape[0])/spe3.shape[0]
     ff=plt.figure(3)
