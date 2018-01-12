@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 11.01.2018 18:48
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 12.01.2018 11:32
 import os
 import sys
 import numpy as np
@@ -153,10 +153,12 @@ class halfband(rtl,thesdk):
        fid.close()
 
 if __name__=="__main__":
+    import sys
     import matplotlib.pyplot as plt
     from  halfband import *
     from  f2_signal_gen import *
     from  f2_system import *
+    arguments=sys.argv[1:]
     siggen=f2_signal_gen()
     siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':[11.0e6 , 0.45*80e6, 0.95*80e6, 1.05*80e6 ], 'length':2**14, 'BBRs':160e6 };
     siggen.Users=1
@@ -170,7 +172,13 @@ if __name__=="__main__":
     h.iptr_A.Value=insig
     h.halfband_Bandwidth=0.45
     h.halfband_N=40
-    h.model='py'
+    print(arguments)
+    if len(arguments) >0:
+        h.model='\'%s\'' %(arguments[0])
+        print(h.model)
+    else:
+        h.model='sv'
+
     h.init()
     impulse=np.r_['0', h.H, np.zeros((1024-h.H.shape[0],1))]
     h.export_scala() 
