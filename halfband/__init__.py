@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 12.01.2018 11:32
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 12.01.2018 20:53
 import os
 import sys
 import numpy as np
@@ -12,21 +12,24 @@ import time
 if not (os.path.abspath('../../thesdk') in sys.path):
     sys.path.append(os.path.abspath('../../thesdk'))
 from thesdk import *
-
 from refptr import *
 from rtl import *
+from verilog import *
 
 #Simple buffer template
-class halfband(rtl,thesdk):
+class halfband(verilog,thesdk):
     def __init__(self,*arg): 
         self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
         self.Rs = 160;                 # sampling frequency
         self.halfband_Bandwidth=0.45 # Pass band bandwidth
         self.halfband_N=40           #Number of coeffs
+        self.scale=2
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
         self._Z = refptr();
         self._classfile=os.path.dirname(os.path.realpath(__file__)) + "/"+__name__
+        #self.testV=False
+        self.testV=True
         if len(arg)>=1:
             parent=arg[0]
             self.copy_propval(parent,self.proplist)
@@ -35,37 +38,18 @@ class halfband(rtl,thesdk):
 
     def init(self):
         self.H=self.firhalfband(**{'n':self.halfband_N, 'bandwidth':self.halfband_Bandwidth})
-        self.def_rtl()
-        rndpart=os.path.basename(tempfile.mkstemp()[1])
-        self._infile=self._rtlsimpath +'/A_' + rndpart +'.txt'
-        self._outfile=self._rtlsimpath +'/Z_' + rndpart +'.txt'
-        self._rtlcmd=self.get_rtlcmd()
+        self.def_verilog()
+        self._vlogparameters=dict([ ('g_rs',self.Rs), ('g_scale',self.scale) ])
 
-    def get_rtlcmd(self):
-        #the could be gathered to rtl class in some way but they are now here for clarity
-        submission = ' bsub -K '  
-        rtllibcmd =  'vlib ' +  self._workpath + ' && sleep 2'
-        rtllibmapcmd = 'vmap work ' + self._workpath
-
-        if (self.model is 'vhdl'):
-            rtlcompcmd = ( 'vcom ' + self._rtlsrcpath + '/' + self._name + '.vhd '
-                          + self._rtlsrcpath + '/tb_'+ self._name+ '.vhd' )
-            rtlsimcmd =  ( 'vsim -64 -batch -t 1ps -g g_infile=' + 
-                           self._infile + ' -g g_outfile=' + self._outfile 
-                           + ' work.tb_' + self._name + ' -do "run -all; quit -f;"')
-            rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
-
-        elif (self.model is 'sv'):
-            rtlcompcmd = ( 'vlog -work work ' + self._rtlsrcpath + '/' + self._name + '.sv '
-                           + self._rtlsrcpath + '/tb_' + self._name +'.sv')
-            rtlsimcmd = ( 'vsim -64 -batch -t 1ps -voptargs=+acc -g g_infile=' + self._infile
-                          + ' -g g_outfile=' + self._outfile + ' work.tb_' + self._name  + ' -do "run -all; quit;"')
-
-            rtlcmd =  submission + rtllibcmd  +  ' && ' + rtllibmapcmd + ' && ' + rtlcompcmd +  ' && ' + rtlsimcmd
-
+    def main(self):
+        if self.iptr_A.Value.shape[1] > self.iptr_A.Value.shape[0]:
+            out=np.convolve(np.transpose(self.iptr_A.Value)[:,0],self.H[:,0]).rehape(-1,1)
         else:
-            rtlcmd=[]
-        return rtlcmd
+            out=np.convolve(self.iptr_A.Value[:,0],self.H[:,0]).reshape(-1,1)
+        out=out[0::2,0]
+        if self.par:
+            queue.put(out)
+        self._Z.Value=out
 
     def run(self,*arg):
         if len(arg)>0:
@@ -75,49 +59,11 @@ class halfband(rtl,thesdk):
             self.par=False
 
         if self.model=='py':
-            self.decimate_input()
+            self.main()
         else: 
-          try:
-              os.remove(self._infile)
-          except:
-              pass
-          fid=open(self._infile,'wb')
-          np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
-          fid.close()
-          while not os.path.isfile(self._infile):
-              self.print_log({'type':'I', 'msg':"Wait infile to appear"})
-              time.sleep(5)
-          try:
-              os.remove(self._outfile)
-          except:
-              pass
-          self.print_log({'type':'I', 'msg':"Running external command %s\n" %(self._rtlcmd) })
-          subprocess.call(shlex.split(self._rtlcmd));
-          
-          while not os.path.isfile(self._outfile):
-              self.print_log({'type':'I', 'msg':"Wait outfile to appear"})
-              time.sleep(5)
-          fid=open(self._outfile,'r')
-          out = np.loadtxt(fid,dtype=complex)
-          #Of course it does not work symmetrically with savetxt
-          out=(out[:,0]+1j*out[:,1]).reshape(-1,1) 
-          fid.close()
-          if self.par:
-              queue.put(out)
-          self._Z.Value=out
-          os.remove(self._infile)
-          os.remove(self._outfile)
-
-    def decimate_input(self):
-            if self.iptr_A.Value.shape[1] > self.iptr_A.Value.shape[0]:
-                out=np.convolve(np.transpose(self.iptr_A.Value)[:,0],self.H[:,0]).rehape(-1,1)
-            else:
-                out=np.convolve(self.iptr_A.Value[:,0],self.H[:,0]).reshape(-1,1)
-
-            out=out[0::2,0]
-            if self.par:
-                queue.put(out)
-            self._Z.Value=out
+          self.write_infile()
+          self.run_verilog()
+          self.read_outfile()
 
     def firhalfband(self,**kwargs):
        n=kwargs.get('n',32)
@@ -131,7 +77,35 @@ class halfband(rtl,thesdk):
        hb[0::2,0]=coeffs
        hb[n-1,0]=1
        return hb
-   
+  
+    def write_infile(self):
+        rndpart=os.path.basename(tempfile.mkstemp()[1])
+        if self.model=='sv':
+            self._infile=self._vlogsimpath +'/A_' + rndpart +'.txt'
+            self._outfile=self._vlogsimpath +'/Z_' + rndpart +'.txt'
+        elif self.model=='vhdl':
+            pass
+        else:
+            pass
+        try:
+          os.remove(self._infile)
+        except:
+          pass
+        fid=open(self._infile,'wb')
+        np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
+        fid.close()
+
+    def read_outfile(self):
+        fid=open(self._outfile,'r')
+        out = np.loadtxt(fid,dtype=complex)
+        #Of course it does not work symmetrically with savetxt
+        out=(out[:,0]+1j*out[:,1]).reshape(-1,1) 
+        fid.close()
+        if self.par:
+          queue.put(out)
+        self._Z.Value=out
+        os.remove(self._outfile)
+
     def export_scala(self):
        #This is the first effort to support generators
        bwstr=str(self.halfband_Bandwidth).replace('.','')
@@ -174,10 +148,11 @@ if __name__=="__main__":
     h.halfband_N=40
     print(arguments)
     if len(arguments) >0:
-        h.model='\'%s\'' %(arguments[0])
+        #h.model='\'%s\'' %(arguments[0])
+        h.model='sv'
         print(h.model)
     else:
-        h.model='sv'
+        h.model='py'
 
     h.init()
     impulse=np.r_['0', h.H, np.zeros((1024-h.H.shape[0],1))]
