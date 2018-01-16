@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 14.01.2018 11:09
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 16.01.2018 11:14
 import os
 import sys
 import numpy as np
@@ -20,7 +20,7 @@ from verilog import *
 class halfband(verilog,thesdk):
     def __init__(self,*arg): 
         self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
-        self.Rs = 160;                 # sampling frequency
+        self.Rs_high = 160;          # sampling frequency
         self.halfband_Bandwidth=0.45 # Pass band bandwidth
         self.halfband_N=40           #Number of coeffs
         self.scale=2
@@ -37,9 +37,10 @@ class halfband(verilog,thesdk):
         self.init()
 
     def init(self):
+        self.Rs_low=self.Rs_high/2   #to be consistent with cic3 and a general deciamtors
         self.H=self.firhalfband(**{'n':self.halfband_N, 'bandwidth':self.halfband_Bandwidth})
         self.def_verilog()
-        self._vlogparameters=dict([ ('g_rs',self.Rs), ('g_scale',self.scale) ])
+        self._vlogparameters=dict([ ('g_rs',self.Rs_high), ('g_scale',self.scale) ])
 
     def main(self):
         print(self.iptr_A.Value.shape)
@@ -57,6 +58,7 @@ class halfband(verilog,thesdk):
             self.par=False
 
         if self.model=='py':
+            print('running')
             self.main()
         else: 
           self.write_infile()
