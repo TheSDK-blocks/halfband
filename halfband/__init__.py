@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 16.01.2018 11:14
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 17.01.2018 17:41
 import os
 import sys
 import numpy as np
@@ -40,12 +40,14 @@ class halfband(verilog,thesdk):
         self.Rs_low=self.Rs_high/2   #to be consistent with cic3 and a general deciamtors
         self.H=self.firhalfband(**{'n':self.halfband_N, 'bandwidth':self.halfband_Bandwidth})
         self.def_verilog()
-        self._vlogparameters=dict([ ('g_rs',self.Rs_high), ('g_scale',self.scale) ])
+        self._vlogparameters=dict([ ('g_Rs_high',self.Rs_high), ('g_scale',self.scale) ])
 
     def main(self):
         print(self.iptr_A.Value.shape)
-        out=np.convolve(self.iptr_A.Value.reshape((-1,1))[:,0],self.H[:,0]).reshape(-1,1)
+        print(self.H)
+        out=np.convolve(self.iptr_A.Value.reshape((-1,1))[:,0],self.H[:,0],mode='full').reshape((-1,1))
         out=out[0::2,0].reshape((-1,1))
+        print(out.shape)
         if self.par:
             queue.put(out)
         self._Z.Value=out
@@ -134,7 +136,17 @@ if __name__=="__main__":
     from  f2_system import *
     arguments=sys.argv[1:]
     siggen=f2_signal_gen()
-    siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':[11.0e6 , 0.45*80e6, 0.95*80e6, 1.05*80e6 ], 'length':2**14, 'BBRs':160e6 };
+    
+    #freqlist=[1.0e6, 0.45*fsorig]
+    #_=[freqlist.extend([i*fsorig-bw*fsorig, i*fsorig+bw*fsorig]) for i in list(fsindexes) ] 
+    #_=[freqlist.extend([i*fsorig-bw*fsorig, i*fsorig+bw*fsorig]) for i in list(fsindexes) ] 
+    #print(freqlist)
+    #siggen.Rs=highrate
+    #siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':freqlist, 'length':2**20, 'BBRs':highrate };
+    fsorig=20e6
+    bw=0.45
+    siggen.Rs=2*fsorig
+    siggen.bbsigdict={ 'mode':'sinusoid', 'freqs':[1.0e6 , 0.45*fsorig, fsorig-bw*fsorig, fsorig+bw*fsorig ], 'length':2**14, 'BBRs':2*fsorig };
     siggen.Users=1
     siggen.Txantennas=1
     siggen.init()
@@ -144,7 +156,9 @@ if __name__=="__main__":
     insig=np.round(insig/np.amax(np.abs(insig))*(2**(bits-1)-1))
     h=halfband()
     h.iptr_A.Value=insig
-    h.halfband_Bandwidth=0.45
+    h.Rs_high=2*fsorig
+    h.scale=64
+    h.halfband_Bandwidth=bw
     h.halfband_N=40
     print(arguments)
     if len(arguments) >0:
@@ -156,7 +170,7 @@ if __name__=="__main__":
 
     h.init()
     impulse=np.r_['0', h.H, np.zeros((1024-h.H.shape[0],1))]
-    h.export_scala() 
+    #h.export_scala() 
     h.run() 
 
     w=np.arange(1024)/1024
@@ -169,21 +183,32 @@ if __name__=="__main__":
 
     nbits=16
     spe2=np.fft.fft(np.round(impulse*(2**(nbits-1)-1)),axis=0)
-    g=plt.figure(2)
+    ff=plt.figure(2)
     plt.plot(w,20*np.log10(np.abs(spe2)/np.amax(np.abs(spe2))))
     plt.ylim((-80,3))
     plt.grid(True)
-    g.show()
+    ff.show()
     
     #spe3=np.fft.fft(h._Z.Value,axis=0)
     print(h._Z.Value)
-    fs, spe3=sig.welch(h._Z.Value,fs=80e6,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
-    w=np.arange(spe3.shape[0])/spe3.shape[0]
-    ff=plt.figure(3)
+    fs, spe3=sig.welch(h.iptr_A.Value,fs=h.Rs_high,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
+    w=np.arange(spe3.shape[0])/spe3.shape[0]*h.Rs_high
+    fff=plt.figure(3)
     plt.plot(w,10*np.log10(np.abs(spe3)/np.amax(np.abs(spe3))))
     plt.ylim((-80,3))
     plt.grid(True)
-    ff.show()
+    fff.show()
+    maximum=np.amax([np.abs(np.real(h._Z.Value)), np.abs(np.imag(h._Z.Value))])
+    str="Output signal range is %i" %(maximum)
+    print(str)
+ 
+    fs, spe4=sig.welch(h._Z.Value,fs=h.Rs_low,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
+    w=np.arange(spe4.shape[0])/spe4.shape[0]*h.Rs_low
+    ffff=plt.figure(4)
+    plt.plot(w,10*np.log10(np.abs(spe4)/np.amax(np.abs(spe4))))
+    plt.ylim((-80,3))
+    plt.grid(True)
+    ffff.show()
 
     #Required to keep the figures open
     input()
