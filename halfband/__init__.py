@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 17.01.2018 17:41
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 18.01.2018 10:09
 import os
 import sys
 import numpy as np
@@ -43,11 +43,8 @@ class halfband(verilog,thesdk):
         self._vlogparameters=dict([ ('g_Rs_high',self.Rs_high), ('g_scale',self.scale) ])
 
     def main(self):
-        print(self.iptr_A.Value.shape)
-        print(self.H)
         out=np.convolve(self.iptr_A.Value.reshape((-1,1))[:,0],self.H[:,0],mode='full').reshape((-1,1))
         out=out[0::2,0].reshape((-1,1))
-        print(out.shape)
         if self.par:
             queue.put(out)
         self._Z.Value=out
