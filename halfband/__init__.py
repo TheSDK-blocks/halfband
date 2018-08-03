@@ -13,7 +13,6 @@ if not (os.path.abspath('../../thesdk') in sys.path):
     sys.path.append(os.path.abspath('../../thesdk'))
 from thesdk import *
 from refptr import *
-from rtl import *
 from verilog import *
 
 #Simple buffer template
