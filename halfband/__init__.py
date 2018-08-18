@@ -1,5 +1,5 @@
 # halfband class 
-# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 18.01.2018 10:09
+# Last modification by Marko Kosunen, marko.kosunen@aalto.fi, 17.08.2018 15:51
 import os
 import sys
 import numpy as np
@@ -8,15 +8,15 @@ import tempfile
 import subprocess
 import shlex
 import time
-#Add TheSDK to path. Importing it first adds the rest of the modules
-if not (os.path.abspath('../../thesdk') in sys.path):
-    sys.path.append(os.path.abspath('../../thesdk'))
 from thesdk import *
-from refptr import *
 from verilog import *
 
 #Simple buffer template
 class halfband(verilog,thesdk):
+    @property
+    def _classfile(self):
+        return os.path.dirname(os.path.realpath(__file__)) + "/"+__name__
+
     def __init__(self,*arg): 
         self.proplist = [ 'Rs' ];    #properties that can be propagated from parent
         self.Rs_high = 160;          # sampling frequency
@@ -26,9 +26,6 @@ class halfband(verilog,thesdk):
         self.iptr_A = refptr();
         self.model='py';             #can be set externally, but is not propagated
         self._Z = refptr();
-        self._classfile=os.path.dirname(os.path.realpath(__file__)) + "/"+__name__
-        #self.testV=False
-        self.testV=True
         if len(arg)>=1:
             parent=arg[0]
             self.copy_propval(parent,self.proplist)
