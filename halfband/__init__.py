@@ -23,9 +23,9 @@ class halfband(verilog,thesdk):
         self.halfband_Bandwidth=0.45 # Pass band bandwidth
         self.halfband_N=40           #Number of coeffs
         self.scale=2
-        self.iptr_A = refptr();
+        self.iptr_A = IO();
         self.model='py';             #can be set externally, but is not propagated
-        self._Z = refptr();
+        self._Z = IO();
         if len(arg)>=1:
             parent=arg[0]
             self.copy_propval(parent,self.proplist)
@@ -39,11 +39,11 @@ class halfband(verilog,thesdk):
         self._vlogparameters=dict([ ('g_Rs_high',self.Rs_high), ('g_scale',self.scale) ])
 
     def main(self):
-        out=np.convolve(self.iptr_A.Value.reshape((-1,1))[:,0],self.H[:,0],mode='full').reshape((-1,1))
+        out=np.convolve(self.iptr_A.Data.reshape((-1,1))[:,0],self.H[:,0],mode='full').reshape((-1,1))
         out=out[0::2,0].reshape((-1,1))
         if self.par:
             queue.put(out)
-        self._Z.Value=out
+        self._Z.Data=out
 
     def run(self,*arg):
         if len(arg)>0:
@@ -63,7 +63,7 @@ class halfband(verilog,thesdk):
     def firhalfband(self,**kwargs):
        n=kwargs.get('n',32)
        if np.remainder(n,2) > 0:
-           self.print_log({'type':'F', 'msg':'Number of coefficients must be even'})
+           self.print_log(type='F', msg='Number of coefficients must be even')
        bandwidth=kwargs.get('bandwidth',0.45) # Fs=1
        desired=np.array([ 1, 0] )
        bands=np.array([0, bandwidth, 0.499,0.5])
@@ -87,7 +87,7 @@ class halfband(verilog,thesdk):
         except:
           pass
         fid=open(self._infile,'wb')
-        np.savetxt(fid,self.iptr_A.Value.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
+        np.savetxt(fid,self.iptr_A.Data.reshape(-1,1).view(float),fmt='%i', delimiter='\t')
         fid.close()
 
     def read_outfile(self):
@@ -98,7 +98,7 @@ class halfband(verilog,thesdk):
         fid.close()
         if self.par:
           queue.put(out)
-        self._Z.Value=out
+        self._Z.Data=out
         os.remove(self._outfile)
 
     def export_scala(self):
@@ -145,10 +145,10 @@ if __name__=="__main__":
     siggen.init()
     #Mimic ADC
     bits=10
-    insig=siggen._Z.Value[0,:,0].reshape(-1,1)
+    insig=siggen._Z.Data[0,:,0].reshape(-1,1)
     insig=np.round(insig/np.amax(np.abs(insig))*(2**(bits-1)-1))
     h=halfband()
-    h.iptr_A.Value=insig
+    h.iptr_A.Data=insig
     h.Rs_high=2*fsorig
     h.scale=64
     h.halfband_Bandwidth=bw
@@ -182,20 +182,20 @@ if __name__=="__main__":
     plt.grid(True)
     ff.show()
     
-    #spe3=np.fft.fft(h._Z.Value,axis=0)
-    print(h._Z.Value)
-    fs, spe3=sig.welch(h.iptr_A.Value,fs=h.Rs_high,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
+    #spe3=np.fft.fft(h._Z.Data,axis=0)
+    print(h._Z.Data)
+    fs, spe3=sig.welch(h.iptr_A.Data,fs=h.Rs_high,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
     w=np.arange(spe3.shape[0])/spe3.shape[0]*h.Rs_high
     fff=plt.figure(3)
     plt.plot(w,10*np.log10(np.abs(spe3)/np.amax(np.abs(spe3))))
     plt.ylim((-80,3))
     plt.grid(True)
     fff.show()
-    maximum=np.amax([np.abs(np.real(h._Z.Value)), np.abs(np.imag(h._Z.Value))])
+    maximum=np.amax([np.abs(np.real(h._Z.Data)), np.abs(np.imag(h._Z.Data))])
     str="Output signal range is %i" %(maximum)
     print(str)
  
-    fs, spe4=sig.welch(h._Z.Value,fs=h.Rs_low,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
+    fs, spe4=sig.welch(h._Z.Data,fs=h.Rs_low,nperseg=1024,return_onesided=False,scaling='spectrum',axis=0)
     w=np.arange(spe4.shape[0])/spe4.shape[0]*h.Rs_low
     ffff=plt.figure(4)
     plt.plot(w,10*np.log10(np.abs(spe4)/np.amax(np.abs(spe4))))
